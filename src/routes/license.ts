@@ -1,0 +1,115 @@
+/**
+ * License endpoints
+ */
+
+import { Hono } from "hono";
+import { v4 as uuid } from "uuid";
+import {
+  signLicense,
+  verifyLicense,
+  isLicenseExpired,
+  type LicensePayload,
+  type SignedLicense,
+} from "../lib/license.js";
+import { createCustomer, findCustomerByEmail, createLicense } from "../lib/db.js";
+
+const app = new Hono();
+
+/**
+ * POST /v1/license/issue
+ * Issue a new license (called after payment)
+ */
+app.post("/v1/license/issue", async (c) => {
+  const apiKey = c.req.header("X-API-Key");
+  if (!apiKey || !validateApiKey(apiKey)) {
+    return c.json({ error: "UNAUTHORIZED", message: "Invalid API key" }, 401);
+  }
+
+  const body = await c.req.json<{
+    customer_id?: string;
+    email: string;
+    plan: "FREE" | "PRO";
+    duration_days: number;
+  }>();
+
+  if (!body.email || !body.plan || !body.duration_days) {
+    return c.json({ error: "INVALID_REQUEST", message: "Missing required fields" }, 400);
+  }
+
+  // Find or create customer
+  let customer = findCustomerByEmail(body.email) as { id: string } | undefined;
+  if (!customer) {
+    const customerId = body.customer_id || uuid();
+    createCustomer(customerId, body.email);
+    customer = { id: customerId };
+  }
+
+  // Create license payload
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + body.duration_days * 24 * 60 * 60 * 1000);
+
+  const payload: LicensePayload = {
+    plan: body.plan,
+    customer_id: customer.id,
+    issued_at: now.toISOString(),
+    expires_at: expiresAt.toISOString(),
+    offline_ttl_days: 30,
+  };
+
+  // Sign license
+  const signedLicense = await signLicense(payload);
+
+  // Store in database
+  const licenseId = uuid();
+  createLicense(licenseId, customer.id, body.plan, payload.issued_at, payload.expires_at);
+
+  return c.json({ license: signedLicense });
+});
+
+/**
+ * POST /v1/license/verify
+ * Verify a license (optional - client can verify locally too)
+ */
+app.post("/v1/license/verify", async (c) => {
+  const body = await c.req.json<{ license: string }>();
+
+  if (!body.license) {
+    return c.json({ error: "INVALID_REQUEST", message: "Missing license" }, 400);
+  }
+
+  let license: SignedLicense;
+  try {
+    license = JSON.parse(Buffer.from(body.license, "base64").toString("utf-8"));
+  } catch {
+    return c.json({ valid: false, reason: "INVALID_FORMAT" });
+  }
+
+  // Verify signature
+  const validSignature = await verifyLicense(license);
+  if (!validSignature) {
+    return c.json({ valid: false, reason: "INVALID_SIGNATURE" });
+  }
+
+  // Check expiration
+  if (isLicenseExpired(license)) {
+    return c.json({ valid: false, reason: "EXPIRED" });
+  }
+
+  // Calculate days left
+  const expiresAt = new Date(license.expires_at);
+  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
+
+  return c.json({
+    valid: true,
+    plan: license.plan,
+    expires_at: license.expires_at,
+    days_left: daysLeft,
+  });
+});
+
+function validateApiKey(key: string): boolean {
+  // Simple validation - in production, check against stored keys
+  return key.startsWith("vibe_sk_") && key.length > 20;
+}
+
+export default app;

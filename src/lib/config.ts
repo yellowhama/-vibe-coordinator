@@ -5,8 +5,8 @@
 export const config = {
   port: parseInt(process.env.PORT || "3000", 10),
 
-  // Database
-  databaseUrl: process.env.DATABASE_URL || "./data/coordinator.db",
+  // Database (use :memory: for Railway, file for local)
+  databaseUrl: process.env.DATABASE_URL || (process.env.RAILWAY_ENVIRONMENT ? ":memory:" : "./data/coordinator.db"),
 
   // Stripe
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",

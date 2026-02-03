@@ -21,7 +21,7 @@ import { logger } from "hono/logger";
 import { cors } from "hono/cors";
 
 import { config, validateConfig } from "./lib/config.js";
-import { getDb } from "./lib/db.js";
+import { initDb } from "./lib/db.js";
 
 import healthRoutes from "./routes/health.js";
 import versionRoutes from "./routes/version.js";
@@ -31,9 +31,6 @@ import stripeRoutes from "./routes/stripe.js";
 
 // Validate configuration
 validateConfig();
-
-// Initialize database
-getDb();
 
 // Create app
 const app = new Hono();
@@ -65,9 +62,19 @@ app.onError((err, c) => {
 });
 
 // Start server
-console.log(`[coordinator] Starting on port ${config.port}...`);
-serve({
-  fetch: app.fetch,
-  port: config.port,
+async function main() {
+  console.log(`[coordinator] Initializing database...`);
+  await initDb();
+
+  console.log(`[coordinator] Starting on port ${config.port}...`);
+  serve({
+    fetch: app.fetch,
+    port: config.port,
+  });
+  console.log(`[coordinator] Ready at http://localhost:${config.port}`);
+}
+
+main().catch((err) => {
+  console.error("[coordinator] Failed to start:", err);
+  process.exit(1);
 });
-console.log(`[coordinator] Ready at http://localhost:${config.port}`);

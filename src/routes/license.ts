@@ -20,50 +20,55 @@ const app = new Hono();
  * Issue a new license (called after payment)
  */
 app.post("/v1/license/issue", async (c) => {
-  const apiKey = c.req.header("X-API-Key");
-  if (!apiKey || !validateApiKey(apiKey)) {
-    return c.json({ error: "UNAUTHORIZED", message: "Invalid API key" }, 401);
+  try {
+    const apiKey = c.req.header("X-API-Key");
+    if (!apiKey || !validateApiKey(apiKey)) {
+      return c.json({ error: "UNAUTHORIZED", message: "Invalid API key" }, 401);
+    }
+
+    const body = await c.req.json<{
+      customer_id?: string;
+      email: string;
+      plan: "FREE" | "PRO";
+      duration_days: number;
+    }>();
+
+    if (!body.email || !body.plan || !body.duration_days) {
+      return c.json({ error: "INVALID_REQUEST", message: "Missing required fields" }, 400);
+    }
+
+    // Find or create customer
+    let customer = findCustomerByEmail(body.email) as { id: string } | undefined;
+    if (!customer) {
+      const customerId = body.customer_id || uuid();
+      createCustomer(customerId, body.email);
+      customer = { id: customerId };
+    }
+
+    // Create license payload
+    const now = new Date();
+    const expiresAt = new Date(now.getTime() + body.duration_days * 24 * 60 * 60 * 1000);
+
+    const payload: LicensePayload = {
+      plan: body.plan,
+      customer_id: customer.id,
+      issued_at: now.toISOString(),
+      expires_at: expiresAt.toISOString(),
+      offline_ttl_days: 30,
+    };
+
+    // Sign license
+    const signedLicense = await signLicense(payload);
+
+    // Store in database
+    const licenseId = uuid();
+    createLicense(licenseId, customer.id, body.plan, payload.issued_at, payload.expires_at);
+
+    return c.json({ license: signedLicense });
+  } catch (err) {
+    console.error("[license/issue] Error:", err);
+    return c.json({ error: "INTERNAL_ERROR", message: String(err) }, 500);
   }
-
-  const body = await c.req.json<{
-    customer_id?: string;
-    email: string;
-    plan: "FREE" | "PRO";
-    duration_days: number;
-  }>();
-
-  if (!body.email || !body.plan || !body.duration_days) {
-    return c.json({ error: "INVALID_REQUEST", message: "Missing required fields" }, 400);
-  }
-
-  // Find or create customer
-  let customer = findCustomerByEmail(body.email) as { id: string } | undefined;
-  if (!customer) {
-    const customerId = body.customer_id || uuid();
-    createCustomer(customerId, body.email);
-    customer = { id: customerId };
-  }
-
-  // Create license payload
-  const now = new Date();
-  const expiresAt = new Date(now.getTime() + body.duration_days * 24 * 60 * 60 * 1000);
-
-  const payload: LicensePayload = {
-    plan: body.plan,
-    customer_id: customer.id,
-    issued_at: now.toISOString(),
-    expires_at: expiresAt.toISOString(),
-    offline_ttl_days: 30,
-  };
-
-  // Sign license
-  const signedLicense = await signLicense(payload);
-
-  // Store in database
-  const licenseId = uuid();
-  createLicense(licenseId, customer.id, body.plan, payload.issued_at, payload.expires_at);
-
-  return c.json({ license: signedLicense });
 });
 
 /**

@@ -12,6 +12,7 @@ import {
   type SignedLicense,
 } from "../lib/license.js";
 import { createCustomer, findCustomerByEmail, createLicense } from "../lib/db.js";
+import { isRevoked, getRevocationInfo } from "../lib/revocation.js";
 
 const app = new Hono();
 
@@ -74,6 +75,15 @@ app.post("/v1/license/issue", async (c) => {
 /**
  * POST /v1/license/verify
  * Verify a license (optional - client can verify locally too)
+ *
+ * DESIGN PRINCIPLE:
+ * - Local is truth (signature + expiration + TTL)
+ * - Server provides supplementary info only:
+ *   - revoked: boolean (server-side revocation check)
+ *   - server_time: string (for clock sync)
+ *   - policy_flags: object (feature flags, minimum version)
+ *
+ * Client should determine plan/expiration from local license data.
  */
 app.post("/v1/license/verify", async (c) => {
   const body = await c.req.json<{ license: string }>();
@@ -86,29 +96,49 @@ app.post("/v1/license/verify", async (c) => {
   try {
     license = JSON.parse(Buffer.from(body.license, "base64").toString("utf-8"));
   } catch {
-    return c.json({ valid: false, reason: "INVALID_FORMAT" });
+    return c.json({
+      valid: false,
+      reason: "INVALID_FORMAT",
+      server_time: new Date().toISOString(),
+    });
   }
 
   // Verify signature
   const validSignature = await verifyLicense(license);
   if (!validSignature) {
-    return c.json({ valid: false, reason: "INVALID_SIGNATURE" });
+    return c.json({
+      valid: false,
+      reason: "INVALID_SIGNATURE",
+      server_time: new Date().toISOString(),
+    });
   }
 
-  // Check expiration
-  if (isLicenseExpired(license)) {
-    return c.json({ valid: false, reason: "EXPIRED" });
+  // Check server-side revocation
+  const licenseId = license.customer_id; // Using customer_id as license identifier
+  const revoked = isRevoked(licenseId);
+  const revocationInfo = revoked ? getRevocationInfo(licenseId) : null;
+
+  if (revoked) {
+    return c.json({
+      valid: false,
+      reason: "REVOKED",
+      revoked: true,
+      revoked_at: revocationInfo?.revoked_at,
+      revocation_reason: revocationInfo?.reason,
+      server_time: new Date().toISOString(),
+    });
   }
 
-  // Calculate days left
-  const expiresAt = new Date(license.expires_at);
-  const daysLeft = Math.ceil((expiresAt.getTime() - Date.now()) / (24 * 60 * 60 * 1000));
-
+  // Return minimal response - client determines plan/expiration locally
   return c.json({
     valid: true,
-    plan: license.plan,
-    expires_at: license.expires_at,
-    days_left: daysLeft,
+    revoked: false,
+    server_time: new Date().toISOString(),
+    policy_flags: {
+      minimum_version: process.env.MINIMUM_VERSION || "1.0.0",
+      features_enabled: ["ant_lane", "scorecard", "policy_analysis", "auto_fix"],
+      maintenance_mode: false,
+    },
   });
 });
 

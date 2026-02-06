@@ -12,6 +12,9 @@ export const config = {
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET || "",
 
+  // Paddle
+  paddleWebhookSecret: process.env.PADDLE_WEBHOOK_SECRET || "",
+
   // License signing (Ed25519)
   licensePrivateKey: process.env.LICENSE_PRIVATE_KEY || "",
   licensePublicKey: process.env.LICENSE_PUBLIC_KEY || "",

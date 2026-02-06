@@ -28,6 +28,8 @@ import versionRoutes from "./routes/version.js";
 import licenseRoutes from "./routes/license.js";
 import usageRoutes from "./routes/usage.js";
 import stripeRoutes from "./routes/stripe.js";
+import paddleRoutes from "./routes/paddle.js";
+import discoveryRoutes from "./routes/discovery.js";
 
 // Validate configuration
 validateConfig();
@@ -40,7 +42,7 @@ app.use("*", logger());
 app.use("*", cors({
   origin: "*",
   allowMethods: ["GET", "POST"],
-  allowHeaders: ["Content-Type", "X-API-Key", "stripe-signature"],
+  allowHeaders: ["Content-Type", "X-API-Key", "stripe-signature", "paddle-signature"],
 }));
 
 // Routes
@@ -49,6 +51,8 @@ app.route("/", versionRoutes);
 app.route("/", licenseRoutes);
 app.route("/", usageRoutes);
 app.route("/", stripeRoutes);
+app.route("/", paddleRoutes);
+app.route("/", discoveryRoutes);
 
 // 404 handler
 app.notFound((c) => {

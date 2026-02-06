@@ -68,6 +68,7 @@ function initSchema(): void {
       id TEXT PRIMARY KEY,
       email TEXT NOT NULL,
       stripe_customer_id TEXT,
+      paddle_customer_id TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -80,6 +81,8 @@ function initSchema(): void {
       issued_at TEXT NOT NULL,
       expires_at TEXT NOT NULL,
       revoked_at TEXT,
+      payment_provider TEXT DEFAULT 'stripe',
+      external_transaction_id TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     )
   `);
@@ -113,10 +116,47 @@ export function findCustomerByEmail(email: string): Record<string, unknown> | un
   return undefined;
 }
 
-export function createCustomer(id: string, email: string, stripeCustomerId?: string): void {
+export function createCustomer(
+  id: string,
+  email: string,
+  stripeCustomerId?: string,
+  paddleCustomerId?: string
+): void {
   getDb().run(
-    "INSERT INTO customers (id, email, stripe_customer_id) VALUES (?, ?, ?)",
-    [id, email, stripeCustomerId || null]
+    "INSERT INTO customers (id, email, stripe_customer_id, paddle_customer_id) VALUES (?, ?, ?, ?)",
+    [id, email, stripeCustomerId || null, paddleCustomerId || null]
+  );
+  saveDb();
+}
+
+export function findCustomerByStripeId(stripeCustomerId: string): Record<string, unknown> | undefined {
+  const stmt = getDb().prepare("SELECT * FROM customers WHERE stripe_customer_id = ?");
+  stmt.bind([stripeCustomerId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+  stmt.free();
+  return undefined;
+}
+
+export function findCustomerByPaddleId(paddleCustomerId: string): Record<string, unknown> | undefined {
+  const stmt = getDb().prepare("SELECT * FROM customers WHERE paddle_customer_id = ?");
+  stmt.bind([paddleCustomerId]);
+  if (stmt.step()) {
+    const row = stmt.getAsObject();
+    stmt.free();
+    return row;
+  }
+  stmt.free();
+  return undefined;
+}
+
+export function updateCustomerPaddleId(customerId: string, paddleCustomerId: string): void {
+  getDb().run(
+    "UPDATE customers SET paddle_customer_id = ? WHERE id = ?",
+    [paddleCustomerId, customerId]
   );
   saveDb();
 }
@@ -127,11 +167,13 @@ export function createLicense(
   customerId: string,
   plan: string,
   issuedAt: string,
-  expiresAt: string
+  expiresAt: string,
+  paymentProvider: "stripe" | "paddle" = "stripe",
+  externalTransactionId?: string
 ): void {
   getDb().run(
-    "INSERT INTO licenses (id, customer_id, plan, issued_at, expires_at) VALUES (?, ?, ?, ?, ?)",
-    [id, customerId, plan, issuedAt, expiresAt]
+    "INSERT INTO licenses (id, customer_id, plan, issued_at, expires_at, payment_provider, external_transaction_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [id, customerId, plan, issuedAt, expiresAt, paymentProvider, externalTransactionId || null]
   );
   saveDb();
 }

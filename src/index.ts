@@ -30,6 +30,7 @@ import usageRoutes from "./routes/usage.js";
 import stripeRoutes from "./routes/stripe.js";
 import paddleRoutes from "./routes/paddle.js";
 import discoveryRoutes from "./routes/discovery.js";
+import authRoutes from "./routes/auth.js";
 
 // Validate configuration
 validateConfig();
@@ -41,8 +42,8 @@ const app = new Hono();
 app.use("*", logger());
 app.use("*", cors({
   origin: "*",
-  allowMethods: ["GET", "POST"],
-  allowHeaders: ["Content-Type", "X-API-Key", "stripe-signature", "paddle-signature"],
+  allowMethods: ["GET", "POST", "DELETE"],
+  allowHeaders: ["Content-Type", "X-API-Key", "Authorization", "stripe-signature", "paddle-signature"],
 }));
 
 // Routes
@@ -53,6 +54,7 @@ app.route("/", usageRoutes);
 app.route("/", stripeRoutes);
 app.route("/", paddleRoutes);
 app.route("/", discoveryRoutes);
+app.route("/", authRoutes);
 
 // 404 handler
 app.notFound((c) => {

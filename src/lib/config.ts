@@ -5,8 +5,8 @@
 export const config = {
   port: parseInt(process.env.PORT || "3000", 10),
 
-  // Database (use :memory: for Railway, file for local)
-  databaseUrl: process.env.DATABASE_URL || (process.env.RAILWAY_ENVIRONMENT ? ":memory:" : "./data/coordinator.db"),
+  // Database — Railway Volume path or local file
+  databaseUrl: process.env.DATABASE_URL || (process.env.RAILWAY_ENVIRONMENT ? "/data/coordinator.db" : "./data/coordinator.db"),
 
   // Stripe
   stripeSecretKey: process.env.STRIPE_SECRET_KEY || "",
@@ -18,6 +18,13 @@ export const config = {
   // License signing (Ed25519)
   licensePrivateKey: process.env.LICENSE_PRIVATE_KEY || "",
   licensePublicKey: process.env.LICENSE_PUBLIC_KEY || "",
+
+  // OAuth
+  googleClientId: process.env.GOOGLE_CLIENT_ID || "",
+  googleClientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+  githubClientId: process.env.GITHUB_CLIENT_ID || "",
+  githubClientSecret: process.env.GITHUB_CLIENT_SECRET || "",
+  appUrl: process.env.APP_URL || "http://localhost:3000",
 
   // App info
   version: "0.1.0",
